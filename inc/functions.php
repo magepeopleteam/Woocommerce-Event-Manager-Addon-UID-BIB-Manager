@@ -228,36 +228,36 @@ function uid_bib_numbers_page_callback() {
             $selected_term_id = intval($_POST['mep_uid_cat_select']);
 
             $start_number = intval(get_term_meta($selected_term_id, 'mep_uid_start', true));
-             $end_number = intval(get_term_meta($selected_term_id, 'mep_uid_end', true));
+            $end_number = intval(get_term_meta($selected_term_id, 'mep_uid_end', true));
 
             if ($start_number > 0 && $end_number >= $start_number) {
-                $created_posts = 0;
-                for ($num = $start_number; $num <= $end_number; $num++) {
-                    $post_data = [
-                        'post_title'  => (string)$num,
-                        'post_type'   => 'mep_uid_number',
-                        'post_status' => 'publish',
-                        'meta_input'  => [
-                            'mep_uid_number' => $num,
-                            'mep_uid_cat' => $selected_term_id,
-                            'mep_uid_status' => 'Available',
-                        ],
-                    ];
+            $created_posts = 0;
+            for ($num = $start_number; $num <= $end_number; $num++) {
+                $formatted_num = str_pad($num, 4, '0', STR_PAD_LEFT);
+                $post_data = [
+                'post_title'  => $formatted_num,
+                'post_type'   => 'mep_uid_number',
+                'post_status' => 'publish',
+                'meta_input'  => [
+                    'mep_uid_number' => $formatted_num,
+                    'mep_uid_cat' => $selected_term_id,
+                    'mep_uid_status' => 'Available',
+                ],
+                ];
 
-                    $post_id = wp_insert_post($post_data);
-                    if ($post_id && !is_wp_error($post_id)) {
-                        $created_posts++;
-                    }
-                    $created_posts++;
+                $post_id = wp_insert_post($post_data);
+                if ($post_id && !is_wp_error($post_id)) {
+                $created_posts++;
                 }
+            }
 
-                update_term_meta($selected_term_id, 'mep_uid_generated_status','done');
+            update_term_meta($selected_term_id, 'mep_uid_generated_status','done');
 
-                echo '<div style="margin-top:20px; color:green; font-weight:bold;">';
-                printf( esc_html__( 'Successfully created %1$s posts for numbers %2$s to %3$s.', 'mage-eventpress-uid-number' ), $created_posts, $start_number, $end_number );
-                echo '</div>';
+            echo '<div style="margin-top:20px; color:green; font-weight:bold;">';
+            printf( esc_html__( 'Successfully created %1$s posts for numbers %2$s to %3$s.', 'mage-eventpress-uid-number' ), $created_posts, str_pad($start_number, 4, '0', STR_PAD_LEFT), str_pad($end_number, 4, '0', STR_PAD_LEFT) );
+            echo '</div>';
             } else {
-                echo '<div style="margin-top:20px; color:red;">' . esc_html__( 'Invalid start or end number.', 'mage-eventpress-uid-number' ) . '</div>';
+            echo '<div style="margin-top:20px; color:red;">' . esc_html__( 'Invalid start or end number.', 'mage-eventpress-uid-number' ) . '</div>';
             }
         }
         ?>
@@ -291,170 +291,184 @@ function uid_bib_numbers_page_callback() {
 
 function mep_get_generated_uid_number_list($per_page, $paged) {
 
-    // Get filter values from request
-    $filter_event_id   = isset($_GET['filter_event_id']) ? sanitize_text_field($_GET['filter_event_id']) : '';
-    $filter_cat_id     = isset($_GET['filter_cat_id']) ? sanitize_text_field($_GET['filter_cat_id']) : '';
-    $filter_order_id   = isset($_GET['filter_order_id']) ? sanitize_text_field($_GET['filter_order_id']) : '';
-    $filter_status     = isset($_GET['filter_status']) ? sanitize_text_field($_GET['filter_status']) : '';
+    // Handle delete action
+    if (isset($_GET['action'], $_GET['uid_id']) && $_GET['action'] === 'mep_delete_uid_number') {
+        $uid_id = intval($_GET['uid_id']);
+        if (isset($_GET['_wpnonce']) && wp_verify_nonce($_GET['_wpnonce'], 'mep_delete_uid_number_' . $uid_id)) {
+
+            // wp_delete_post($uid_id, true);
+            $uid_post_id = $uid_id;
+
+            $attendee_id = get_post_meta($uid_id,'mep_uid_attendee_id',true);
 
 
-    // Get all terms from 'mep_uid_cat'
-    $terms = get_terms([
-        'taxonomy' => 'mep_uid_cat',
-        'hide_empty' => false,
-    ]);
+            update_post_meta( $attendee_id, 'ea_uid_number', '' );
+            update_post_meta( $attendee_id, 'uid_post_id', '' );
 
-    // Build meta_query for filters
+
+            // Reset UID/BiB number post meta
+            update_post_meta( $uid_post_id, 'mep_uid_status', 'Available' );
+            update_post_meta( $uid_post_id, 'mep_uid_attendee_id', '' );
+            update_post_meta( $uid_post_id, 'mep_uid_event_id', '' );
+            update_post_meta( $uid_post_id, 'mep_uid_order_id', '' );
+
+
+
+
+
+
+
+
+
+            $redirect_url = add_query_arg(
+                ['paged' => $paged],
+                remove_query_arg(['action','uid_id','_wpnonce'], wp_get_referer() ?: admin_url('edit.php?post_type=mep_uid_number&page=' . $_GET['page']))
+            );
+            wp_redirect($redirect_url);
+            exit;
+        } else {
+            wp_die('Security check failed.');
+        }
+    }
+
+    // Get filter values
+    $filter_event_id = isset($_GET['filter_event_id']) ? sanitize_text_field($_GET['filter_event_id']) : '';
+    $filter_cat_id   = isset($_GET['filter_cat_id']) ? sanitize_text_field($_GET['filter_cat_id']) : '';
+    $filter_order_id = isset($_GET['filter_order_id']) ? sanitize_text_field($_GET['filter_order_id']) : '';
+    $filter_status   = isset($_GET['filter_status']) ? sanitize_text_field($_GET['filter_status']) : '';
+
+    $terms = get_terms(['taxonomy' => 'mep_uid_cat','hide_empty' => false]);
+
+    // Build meta query
     $meta_query = [];
-    if ($filter_event_id !== '') {
-        $meta_query[] = [
-            'key'   => 'mep_uid_event_id',
-            'value' => $filter_event_id
-        ];
-    }
-    if ($filter_cat_id !== '') {
-        $meta_query[] = [
-            'key'   => 'mep_uid_cat',
-            'value' => $filter_cat_id
-        ];
-    }
-    if ($filter_order_id !== '') {
-        $meta_query[] = [
-            'key'   => 'mep_uid_order_id',
-            'value' => $filter_order_id
-        ];
-    }
-    if ($filter_status !== '') {
-        $meta_query[] = [
-            'key'   => 'mep_uid_status',
-            'value' => $filter_status
-        ];
-    }
-    if (count($meta_query) > 1) {
-        $meta_query['relation'] = 'AND';
-    }
+    if ($filter_event_id !== '') $meta_query[] = ['key'=>'mep_uid_event_id','value'=>$filter_event_id];
+    if ($filter_cat_id !== '')   $meta_query[] = ['key'=>'mep_uid_cat','value'=>$filter_cat_id];
+    if ($filter_order_id !== '') $meta_query[] = ['key'=>'mep_uid_order_id','value'=>$filter_order_id];
+    if ($filter_status !== '')   $meta_query[] = ['key'=>'mep_uid_status','value'=>$filter_status];
+    if (count($meta_query) > 1) $meta_query['relation'] = 'AND';
 
-    // Query args
     $args = [
-        'post_type'      => 'mep_uid_number',
+        'post_type' => 'mep_uid_number',
         'posts_per_page' => $per_page,
-        'paged'          => $paged,
-        'meta_key'       => 'mep_uid_number',
-        'orderby'        => 'meta_value_num',
-        'order'          => 'ASC',
+        'paged' => $paged,
+        'meta_key' => 'mep_uid_number',
+        'orderby' => 'meta_value_num',
+        'order' => 'ASC',
     ];
-
-    if (!empty($meta_query)) {
-        $args['meta_query'] = $meta_query;
-    }
+    if (!empty($meta_query)) $args['meta_query'] = $meta_query;
 
     $query = new WP_Query($args);
     $count = $query->found_posts;
 
-    // Filter Form
+    // Filter Form (using WP native classes)
     ?>
-    <form method="get" style="margin-bottom: 15px;">
-    <?php
-        // Preserve required query vars for admin menu
-        if (isset($_GET['page'])) {
-            echo '<input type="hidden" name="page" value="' . esc_attr($_GET['page']) . '">';
-        }
-        if (isset($_GET['post_type'])) {
-            echo '<input type="hidden" name="post_type" value="' . esc_attr($_GET['post_type']) . '">';
-        }
-    ?>
-        <label><?php _e('Event:', 'mage-eventpress-uid-number'); ?>
+    <form method="get" class="wp-filter" style="margin-bottom: 15px;padding:20px">
+        <input type="hidden" name="page" value="<?php echo esc_attr($_GET['page'] ?? ''); ?>">
+        <input type="hidden" name="post_type" value="<?php echo esc_attr($_GET['post_type'] ?? 'mep_uid_number'); ?>">
+
+        <label style="margin-right:10px;">
+            Event: 
             <select name="filter_event_id">
-                <option value=""><?php esc_html_e('— Select Event —', 'mage-eventpress-uid-number'); ?></option>
+                <option value="">— Select Event —</option>
                 <?php
-                $events = get_posts(array(
-                    'post_type'      => 'mep_events',
-                    'posts_per_page' => -1,
-                    'orderby'        => 'title',
-                    'order'          => 'ASC',
-                ));                
-                foreach ($events as $event) {
-                    echo '<option value="' . esc_attr($event->ID) . '" ' . selected($filter_event_id, $event->ID, false) . '>' . esc_html($event->post_title) . ' (ID: ' . $event->ID . ')</option>';
-                }
+                $events = get_posts(['post_type'=>'mep_events','posts_per_page'=>-1,'orderby'=>'title','order'=>'ASC']);
+                foreach ($events as $event) echo '<option value="'.esc_attr($event->ID).'" '.selected($filter_event_id,$event->ID,false).'>'.esc_html($event->post_title).' (ID: '.$event->ID.')</option>';
                 ?>
             </select>
         </label>
-        <label><?php _e('Category:', 'mage-eventpress-uid-number'); ?>             
-            <select name="filter_cat_id" id="filter_cat_id" style="min-width: 250px; margin-left: 10px;">
-                <option value=""><?php esc_html_e('-- Select a Category --', 'mage-eventpress-uid-number'); ?></option>
-                <?php foreach ($terms as $term): 
-                    $status = get_term_meta($term->term_id, 'mep_uid_generated_status', true) ? get_term_meta($term->term_id, 'mep_uid_generated_status', true) : 'not_done';
-                    if($status != 'not_done') {                                       
-                    ?>
-                    <option value="<?php echo esc_attr($term->term_id); ?>" <?php selected( $filter_cat_id, $term->term_id ); ?>>
-                        <?php echo esc_html($term->name); ?>
-                    </option>
-                <?php } endforeach; ?>
-            </select>       
-        <label><?php _e('Order ID:', 'mage-eventpress-uid-number'); ?> <input type="text" name="filter_order_id" value="<?php echo esc_attr($filter_order_id); ?>"></label>
-        <label><?php _e('Status:', 'mage-eventpress-uid-number'); ?>
-            <select name="filter_status">
-                <option value=""><?php esc_html_e('All', 'mage-eventpress-uid-number'); ?></option>
-                <option value="Used" <?php selected($filter_status, 'Used'); ?>><?php esc_html_e('Used', 'mage-eventpress-uid-number'); ?></option>
-                <option value="Available" <?php selected($filter_status, 'Available'); ?>><?php esc_html_e('Available', 'mage-eventpress-uid-number'); ?></option>
+
+        <label style="margin-right:10px;">
+            Category:
+            <select name="filter_cat_id">
+                <option value="">— Select Category —</option>
+                <?php foreach ($terms as $term) {
+                    $status = get_term_meta($term->term_id,'mep_uid_generated_status',true) ?: 'not_done';
+                    if ($status != 'not_done') echo '<option value="'.esc_attr($term->term_id).'" '.selected($filter_cat_id,$term->term_id,false).'>'.esc_html($term->name).'</option>';
+                } ?>
             </select>
         </label>
-        <button type="submit" class="button"><?php esc_html_e('Filter', 'mage-eventpress-uid-number'); ?></button>
+
+        <label style="margin-right:10px;">
+            Order ID: <input type="text" name="filter_order_id" value="<?php echo esc_attr($filter_order_id); ?>">
+        </label>
+
+        <label style="margin-right:10px;">
+            Status:
+            <select name="filter_status">
+                <option value="">All</option>
+                <option value="Used" <?php selected($filter_status,'Used'); ?>>Used</option>
+                <option value="Available" <?php selected($filter_status,'Available'); ?>>Available</option>
+            </select>
+        </label>
+
+        <button type="submit" class="button button-primary">Filter</button>
     </form>
     <?php
 
     if ($count > 0 && $query->have_posts()) {
-        ?>
-        <table class="widefat fixed striped">
-            <thead>
-                <tr>
-                    <th width="80">Number</th>
-                    <th>Category</th>
-                    <th>Attendee</th>
-                    <th>Ticket Number</th>
-                    <th>Event</th>
-                    <th>Order</th>
-                    <th>Status</th>
-                </tr>
-            </thead>
-        <tbody>
-        <?php
+        echo '<table class="widefat striped">';
+        echo '<thead><tr>
+                <th>Number</th>
+                <th>Category</th>
+                <th>Attendee</th>
+                <th>Ticket</th>
+                <th>Event</th>
+                <th>Order</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr></thead><tbody>';
+
         while ($query->have_posts()) {
             $query->the_post();
-            $num        = get_post_meta(get_the_ID(), 'mep_uid_number', true);
-            $catID      = get_post_meta(get_the_ID(), 'mep_uid_cat', true);
-            $catName    = $catID ? get_term($catID)->name : '-';
-            $status     = get_post_meta(get_the_ID(), 'mep_uid_status', true);
-            $attendee_id = get_post_meta(get_the_ID(), 'mep_uid_attendee_id', true) ?: '-';
-            $event_id    = get_post_meta(get_the_ID(), 'mep_uid_event_id', true) ?: '-';
-            $order_id    = get_post_meta(get_the_ID(), 'mep_uid_order_id', true) ?: '-';
-            echo '<tr>';
-            echo '<td>' . esc_html($num) . '</td>';
-            echo '<td>' . esc_html($catName) . '</td>';
-            echo '<td>' . esc_html(get_post_meta($attendee_id,'ea_name',true)) . '</td>';
-             echo '<td>' . esc_html(get_post_meta($attendee_id,'ea_ticket_no',true)) . '</td>';
-            echo '<td>' . esc_html(get_the_title($event_id)) . '</td>';
-            echo '<td>' . esc_html($order_id) . '</td>';
-            echo '<td>' . esc_html($status) . '</td>';
-            echo '</tr>';
+            $uid_id = get_the_ID();
+            $num = get_post_meta($uid_id,'mep_uid_number',true);
+            $catID = get_post_meta($uid_id,'mep_uid_cat',true);
+            $catName = $catID ? get_term($catID)->name : '-';
+            $status = get_post_meta($uid_id,'mep_uid_status',true);
+            $attendee_id = get_post_meta($uid_id,'mep_uid_attendee_id',true) ?: '-';
+            $event_id = get_post_meta($uid_id,'mep_uid_event_id',true) ?: '-';
+            $order_id = get_post_meta($uid_id,'mep_uid_order_id',true) ?: '-';
+
+            $delete_url = wp_nonce_url(
+                add_query_arg([
+                    'action'=>'mep_delete_uid_number',
+                    'uid_id'=>$uid_id,
+                    'page'=>$_GET['page'] ?? '',
+                    'post_type'=>$_GET['post_type'] ?? 'mep_uid_number',
+                    'paged'=>$paged,
+                ], admin_url('edit.php?post_type=mep_uid_number')),
+                'mep_delete_uid_number_'.$uid_id
+            );
+
+            // Optional: highlight rows based on status
+            $row_class = ($status === 'Used') ? ' style="background:#fce4e4;"' : '';
+
+            echo '<tr'.$row_class.'>
+                    <td>'.esc_html($num).'</td>
+                    <td>'.esc_html($catName).'</td>
+                    <td>'.esc_html(get_post_meta($attendee_id,'ea_name',true)).'</td>
+                    <td>'.esc_html(get_post_meta($attendee_id,'ea_ticket_no',true)).'</td>
+                    <td>'.esc_html(get_the_title($event_id)).'</td>
+                    <td>'.esc_html($order_id).'</td>
+                    <td>'.esc_html($status).'</td>
+                    <td><a href="'.esc_url($delete_url).'" class="button button-small" onclick="return confirm(\'Are you sure to delete this UID/BiB number? This action will make this BIB Number available again and remove the BIB number from the Attendee.\');">Reset</a></td>
+                  </tr>';
         }
-        echo '</tbody>';
-        echo '</table>';
+
+        echo '</tbody></table>';
 
         // Pagination
         echo '<div class="tablenav"><div class="tablenav-pages">';
-        echo paginate_links([
-            'total'   => $query->max_num_pages,
-            'current' => $paged,
-            'base'    => add_query_arg('paged', '%#%'),
-            'format'  => '',
-        ]);
+        echo paginate_links(['total'=>$query->max_num_pages,'current'=>$paged,'base'=>add_query_arg('paged','%#%'),'format'=>'']);
         echo '</div></div>';
     } else {
-    echo '<p>' . esc_html__('No UID/BiB Numbers found.', 'mage-eventpress-uid-number') . '</p>';
+        echo '<p>No UID/BiB Numbers found.</p>';
     }
+
     wp_reset_postdata();
 }
+
+
 
 
 /**
